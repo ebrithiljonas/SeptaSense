@@ -1,0 +1,434 @@
+substitutions:
+  # Name
+  name: "septa-sense"
+  sensor_prefix: "SeptaSense"
+  # Sensor Warnings/Limits
+  warning_pm_2_5: "12.0"
+  limit_pm_2_5: "25.0"
+  warning_pm_10_0: "20.0"
+  limit_pm_10_0: "40.0"
+  warning_co2: "800.0"
+  limit_co2: "1500.0"
+  warning_voc: "150.0"
+  limit_voc: "250.0"
+  warning_nox: "20.0"
+  limit_nox: "150.0"
+  
+  default_pw: "8AVrcPLTDWBz"
+
+esphome:
+  name: ${name}
+  comment: "SeptaSense Air Quality Sensor"
+  project:
+    name: ebrithil.septa-sense
+    version: "1.0"
+  on_boot:
+    - script.execute: startup
+  
+esp32:
+  board: esp32dev
+  
+wifi:
+  # ssid: !secret wifi_ssid
+  # password: !secret wifi_password
+  ap:
+    password: ${default_pw}
+
+captive_portal:
+
+dashboard_import:
+  package_import_url: github://ebrithiljonas/SeptaSense/Firmware/septa-sense.yaml
+
+logger:
+  level: INFO
+api:
+  password: ${default_pw}
+ota:
+  password: ${default_pw}
+  on_begin:
+    then:
+      - display.page.show: page_ota
+      - light.addressable_set:
+          id: air_quality_lights
+          red: 0%
+          green: 0%
+          blue: 0%
+  on_progress:
+    then:
+      - globals.set:
+          id: ota_progress
+          value: !lambda return x;
+      - script.execute: ota_progress_update
+      - component.update: display_main
+      
+i2c:
+  sda: 21
+  scl: 22
+  
+light:
+  - platform: fastled_clockless
+    id: air_quality_lights
+    chipset: WS2812B
+    pin: 12
+    num_leds: 14
+    rgb_order: GRB
+    name: Lights
+    restore_mode: ALWAYS_OFF
+    internal: true
+
+sensor:
+  - platform: sen5x
+    id: sen55
+    pm_1_0:
+      name: "${sensor_prefix} PM <1µm"
+      id: sensor_pm_1_0
+      accuracy_decimals: 1
+      filters:
+        - median:
+            window_size: &window_size 15
+            send_every: &send_every 15
+            send_first_at: &send_first_at 15
+      on_value:
+        then:
+          - script.execute: update
+    pm_2_5:
+      name: "${sensor_prefix} PM <2.5µm"
+      id: sensor_pm_2_5
+      accuracy_decimals: 1
+      filters:
+        - median:
+            window_size: *window_size
+            send_every: *send_every
+            send_first_at: *send_first_at
+    pm_4_0:
+      name: "${sensor_prefix} PM <4µm"
+      id: sensor_pm_4_0
+      accuracy_decimals: 1
+      filters:
+        - median:
+            window_size: *window_size
+            send_every: *send_every
+            send_first_at: *send_first_at
+    pm_10_0:
+      name: "${sensor_prefix} PM <10µm"
+      id: sensor_pm_10_0
+      accuracy_decimals: 1
+      filters:
+        - median:
+            window_size: *window_size
+            send_every: *send_every
+            send_first_at: *send_first_at
+    temperature:
+      name: "${sensor_prefix} Temperature"
+      id: sensor_temperature
+      accuracy_decimals: 1
+      filters:
+        - calibrate_linear:
+          - 10.25 -> 9.31
+          - 51.63 -> 49.91
+        - median:
+            window_size: *window_size
+            send_every: *send_every
+            send_first_at: *send_first_at
+    humidity:
+      name: "${sensor_prefix} Humidity"
+      id: sensor_humidity
+      accuracy_decimals: 0
+      filters:
+        - median:
+            window_size: *window_size
+            send_every: *send_every
+            send_first_at: *send_first_at
+    voc:
+      name: "${sensor_prefix} VOC"
+      id: sensor_voc
+      filters:
+        - median:
+            window_size: *window_size
+            send_every: *send_every
+            send_first_at: *send_first_at
+    nox:
+      name: "${sensor_prefix} NOx"
+      id: sensor_nox
+      filters:
+        - median:
+            window_size: *window_size
+            send_every: *send_every
+            send_first_at: *send_first_at
+    temperature_compensation:
+      offset: 0.0
+      normalized_offset_slope: 0
+      time_constant: 0
+    acceleration_mode: low
+    store_baseline: true
+    address: 0x69
+    update_interval: 1s
+
+  - platform: scd4x
+    co2:
+      name: "${sensor_prefix} CO2"
+      id: sensor_co2
+      accuracy_decimals: 0
+      filters:
+        - median:
+            window_size: 6
+            send_every: 3
+            send_first_at: 3
+    ambient_pressure_compensation_source: sensor_pressure
+    address: 0x62
+    update_interval: 5s
+
+  - platform: bmp3xx
+    pressure:
+      name: "${sensor_prefix} Pressure"
+      id: sensor_pressure
+      accuracy_decimals: 0
+      filters:
+        - median:
+            window_size: *window_size
+            send_every: *send_every
+            send_first_at: *send_first_at
+    address: 0x76
+    update_interval: 1s
+    
+globals:
+  - id: warning_pm_2_5
+    type: float
+    initial_value: "${warning_pm_2_5}"
+  - id: warning_pm_10_0
+    type: float
+    initial_value: "${warning_pm_10_0}"
+  - id: warning_co2
+    type: float
+    initial_value: "${warning_co2}"
+  - id: warning_voc
+    type: float
+    initial_value: "${warning_voc}"
+  - id: warning_nox
+    type: float
+    initial_value: "${warning_nox}"
+  - id: limit_pm_2_5
+    type: float
+    initial_value: "${limit_pm_2_5}"
+  - id: limit_pm_10_0
+    type: float
+    initial_value: "${limit_pm_10_0}"
+  - id: limit_co2
+    type: float
+    initial_value: "${limit_co2}"
+  - id: limit_voc
+    type: float
+    initial_value: "${limit_voc}"
+  - id: limit_nox
+    type: float
+    initial_value: "${limit_nox}"
+  - id: ota_progress
+    type: int
+    initial_value: "-1"
+  - id: startup_progress
+    type: int
+    initial_value: "0"
+    
+font:
+  - file: "gfonts://Mingzat"
+    id: default_font
+    size: 12
+    glyphs: 'µ/!"%()+=,-_.:°0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz'
+    
+image:
+  - file: "images/logo_64.png"
+    id: logo
+    resize: 64x64
+    type: TRANSPARENT_BINARY
+    
+display:
+  - platform: ssd1306_i2c
+    model: "SSD1306 128x64"
+    address: 0x3C
+    id: display_main
+    pages:
+      - id: page_startup
+        lambda: |-
+          it.image(32, 0, id(logo));
+      - id: page_overview
+        lambda: |-
+          it.print(  1, 0, id(default_font), "T");
+          it.printf(13, 0, id(default_font), "%.1f °C", id(sensor_temperature).state);
+          it.print(  1, 14, id(default_font), "H");
+          it.printf(13, 14, id(default_font), "%.1f %%", id(sensor_humidity).state);
+          it.print(  1, 28, id(default_font), "C");
+          it.printf(13, 28, id(default_font), "%.0f ppm", id(sensor_co2).state);
+          it.print(  1, 42, id(default_font), "P");
+          it.printf(13, 42, id(default_font), "%.1f µg/m3", id(sensor_pm_2_5).state);
+
+          it.print( 90,     0, id(default_font), "A");
+          it.printf(90+13,  0, id(default_font), "%03.0f pa", id(sensor_pressure).state);
+          it.print( 90,    14, id(default_font), "V");
+          it.printf(90+13, 14, id(default_font), "%03.0f", id(sensor_voc).state);
+          it.print( 90,    28, id(default_font), "N");
+          it.printf(90+13, 28, id(default_font), "%03.0f", id(sensor_nox).state);
+
+      - id: page_pm_2_5_graph
+        lambda: |-
+          it.printf(8, -5, id(default_font), "PM 2.5: %.1f ug/m3", id(sensor_pm_2_5).state);
+          it.graph(0, 16, id(pm_2_5_graph));
+
+      - id: page_pm_10_0_graph
+        lambda: |-
+          it.printf(8, -5, id(default_font), "PM 10: %.1f ug/m3", id(sensor_pm_10_0).state);
+          it.graph(0, 16, id(pm_10_0_graph));
+
+      - id: page_co2_graph
+        lambda: |-
+          it.printf(8, -5, id(default_font), "CO2: %.0f ppm", id(sensor_co2).state);
+          it.graph(0, 16, id(co2_graph));
+
+      - id: page_voc_graph
+        lambda: |-
+          it.printf(8, -5, id(default_font), "VOC Index: %.0f", id(sensor_voc).state);
+          it.graph(0, 16, id(voc_graph));
+
+      - id: page_nox_graph
+        lambda: |-
+          it.printf(8, -5, id(default_font), "NOx Index: %.0f", id(sensor_nox).state);
+          it.graph(0, 16, id(nox_graph));
+          
+      - id: page_ota
+        lambda: |-
+          int progress = map(id(ota_progress), 0, 98, 0, 124);
+          it.print(2, 2, id(default_font), "Updating...");
+          it.printf(2, 42, id(default_font), "Progress: %i %%", id(ota_progress));
+          it.rectangle(2, 28, 124, 16);
+          it.filled_rectangle(2, 28, progress, 16);
+      
+graph:
+  - id: pm_2_5_graph
+    sensor: sensor_pm_2_5
+    duration: &graph_duration 30min
+    x_grid: &graph_x_grid 6min
+    y_grid: 1.0
+    width: 128
+    height: 48
+  - id: pm_10_0_graph
+    sensor: sensor_pm_10_0
+    duration: *graph_duration
+    x_grid: *graph_x_grid
+    y_grid: 1.0
+    width: 128
+    height: 48
+  - id: co2_graph
+    sensor: sensor_co2
+    duration: *graph_duration
+    x_grid: *graph_x_grid
+    y_grid: 200
+    width: 128
+    height: 48
+  - id: voc_graph
+    sensor: sensor_voc
+    duration: *graph_duration
+    x_grid: *graph_x_grid
+    y_grid: 100
+    width: 128
+    height: 48
+  - id: nox_graph
+    sensor: sensor_nox
+    duration: *graph_duration
+    x_grid: *graph_x_grid
+    y_grid: 100
+    width: 128
+    height: 48
+      
+script:
+  - id: update
+    then:    
+      - delay: 1s
+      - lambda: |-
+          if (id(startup_progress) == -1) {
+            esphome::display::DisplayPage *page = id(page_overview);
+            esphome::light::AddressableLight *light = (esphome::light::AddressableLight*) id(air_quality_lights).get_output();
+            esphome::Color color_good = Color(0,76,0);
+            esphome::Color color_limit = Color(76,0,0);
+            esphome::Color color_warning = Color(76,76,0);
+            light->all() = color_good;
+            // Limit: CO2
+            if(id(sensor_co2).state > id(limit_co2)) {
+              page = id(page_co2_graph);
+              light->all() = color_limit;
+            }
+            // Limit: VOC
+            else if(id(sensor_voc).state > id(limit_voc)) {
+              page = id(page_voc_graph);
+              light->all() = color_limit;
+            }
+            // Limit: NOx
+            else if(id(sensor_nox).state > id(limit_nox)) {
+              page = id(page_nox_graph);
+              light->all() = color_limit;
+            }
+            // Limit: Particular Matter 2.5 ug
+            else if(id(sensor_pm_2_5).state > id(limit_pm_2_5)) {
+              page = id(page_pm_2_5_graph);
+              light->all() = color_limit;
+            }
+            // Limit: Particular Matter 10 ug
+            else if(id(sensor_pm_10_0).state > id(limit_pm_10_0)) {
+              page = id(page_pm_10_0_graph);
+              light->all() = color_limit;
+            }
+            // Warning: CO2
+            else if(id(sensor_co2).state > id(warning_co2)) {
+              page = id(page_co2_graph);
+              light->all() = color_warning;
+            }
+            // Warning: VOC
+            else if(id(sensor_voc).state > id(warning_voc)) {
+              page = id(page_voc_graph);
+              light->all() = color_warning;
+            }
+            // Warning: NOx
+            else if(id(sensor_nox).state > id(warning_nox)) {
+              page = id(page_nox_graph);
+              light->all() = color_warning;
+            }
+            // Warning: Particular Matter 2.5 ug
+            else if(id(sensor_pm_2_5).state > id(warning_pm_2_5)) {
+              page = id(page_pm_2_5_graph);
+              light->all() = color_warning;
+            }
+            // Warning: Particular Matter 10 ug
+            else if(id(sensor_pm_10_0).state > id(warning_pm_10_0)) {
+              page = id(page_pm_10_0_graph);
+              light->all() = color_warning;
+            }
+            id(display_main).show_page(page);
+            light->write_state(id(air_quality_lights));
+          }
+         
+  - id: ota_progress_update
+    then:
+      lambda: |-
+        esphome::light::AddressableLight *light = (esphome::light::AddressableLight*) id(air_quality_lights).get_output();
+        esphome::Color color_update = Color(0,70,76);
+        light->all() = Color::BLACK;
+        int progress = map(id(ota_progress), 0, 98, 0, 14);
+        light->range(0, progress) = color_update;
+        light->write_state(id(air_quality_lights));
+
+  - id: startup
+    then:
+      - repeat:
+          count: 14
+          then:
+            - delay: 2.5s
+            - lambda: id(startup_progress)++;
+            - display.page.show: page_startup
+            - lambda: |-
+                esphome::light::AddressableLight *light = (esphome::light::AddressableLight*) id(air_quality_lights).get_output();
+                esphome::Color color_startup = Color(0,0,76);
+                light->all() = Color::BLACK;
+                light->range(0, id(startup_progress)) = color_startup;
+                light->write_state(id(air_quality_lights));
+      - globals.set:
+          id: startup_progress
+          value: "-1"
+      - script.execute: update
