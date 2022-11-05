@@ -18,10 +18,11 @@ substitutions:
 
 esphome:
   name: ${name}
+  name_add_mac_suffix: true
   comment: "SeptaSense Air Quality Sensor"
   project:
     name: ebrithil.septa-sense
-    version: "1.0"
+    version: "1.1"
   on_boot:
     - script.execute: startup
   
@@ -126,10 +127,7 @@ sensor:
         - calibrate_linear:
           - 10.25 -> 9.31
           - 51.63 -> 49.91
-        - median:
-            window_size: *window_size
-            send_every: *send_every
-            send_first_at: *send_first_at
+        - offset: -1.0
     humidity:
       name: "${sensor_prefix} Humidity"
       id: sensor_humidity
@@ -159,7 +157,7 @@ sensor:
       offset: 0.0
       normalized_offset_slope: 0
       time_constant: 0
-    acceleration_mode: low
+    acceleration_mode: high
     store_baseline: true
     address: 0x69
     update_interval: 1s
@@ -171,12 +169,12 @@ sensor:
       accuracy_decimals: 0
       filters:
         - median:
-            window_size: 6
-            send_every: 3
-            send_first_at: 3
+            window_size: 5
+            send_every: 2
+            send_first_at: 2
     ambient_pressure_compensation_source: sensor_pressure
     address: 0x62
-    update_interval: 5s
+    update_interval: 10s
 
   - platform: bmp3xx
     pressure:
@@ -185,11 +183,11 @@ sensor:
       accuracy_decimals: 0
       filters:
         - median:
-            window_size: *window_size
-            send_every: *send_every
-            send_first_at: *send_first_at
+            window_size: 10
+            send_every: 10
+            send_first_at: 10
     address: 0x76
-    update_interval: 1s
+    update_interval: 10s
     
 globals:
   - id: warning_pm_2_5
@@ -246,6 +244,7 @@ display:
     model: "SSD1306 128x64"
     address: 0x3C
     id: display_main
+    update_interval: never
     pages:
       - id: page_startup
         lambda: |-
@@ -403,6 +402,7 @@ script:
             id(display_main).show_page(page);
             light->write_state(id(air_quality_lights));
           }
+      - component.update: display_main
          
   - id: ota_progress_update
     then:
@@ -422,6 +422,7 @@ script:
             - delay: 2.5s
             - lambda: id(startup_progress)++;
             - display.page.show: page_startup
+            - component.update: display_main
             - lambda: |-
                 esphome::light::AddressableLight *light = (esphome::light::AddressableLight*) id(air_quality_lights).get_output();
                 esphome::Color color_startup = Color(0,0,76);
